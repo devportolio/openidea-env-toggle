@@ -1,0 +1,11 @@
+{
+  "name": "env-toggle",
+  "private": true,
+  "description": "OpenIDEA plugin: checkbox view for .env files. No dependencies; this file only holds the scripts.",
+  "scripts": {
+    "test": "node --test",
+    "dev": "python3 -m http.server 5178",
+    "check": "openidea-plugin check .",
+    "pack": "openidea-plugin pack . --out dist/devportolio.env-toggle-1.0.0.oiplugin"
+  }
+}

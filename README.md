@@ -1,0 +1,73 @@
+# Env Toggle
+
+An [OpenIDEA](https://openidea.sh) plugin that shows `.env` files as a list of checkboxes.
+
+- **Checked** = the line is active: `API_URL=http://localhost:3000`
+- **Unchecked** = the line is commented out: `# API_URL=http://localhost:3000`
+
+It opens beside the text editor, like the Markdown preview. Use the switch in the tab strip to choose **Editor Only**, **Editor and Preview** or **Preview Only**. Every change is a normal text edit, so Undo, Save and the dirty mark all work as usual.
+
+Opens for: `.env`, `.env.*` (`.env.local`, `.env.production`, `.env.example`, …) and `*.env`. To get the plain text editor back for one file, use **Open as Text**.
+
+## Install
+
+- **From the marketplace:** in OpenIDEA, open **Settings › Plugins › Marketplace** and search for **Env Toggle**.
+- **From a release:** download `devportolio.env-toggle-<version>.oiplugin` from [Releases](https://github.com/devportolio/openidea-env-toggle/releases), then use **Settings › Plugins › ⚙ › Install Plugin from Package File…**.
+
+The plugin has no code, only a web page that edits the open file, so it asks for no permissions.
+
+## Features
+
+- **Checkbox per variable.** `export KEY=…` works too. Unchecking adds `# `; checking removes the `#` marks.
+- **Groups.** A comment heading such as `# Staging` (or `#dev`) and the lines right under it form a group, up to the first blank line. The heading gets its own checkbox (all on / all off / mixed) that switches the whole group in one undoable step, and a bar in the left margin shows where the group ends. Variables after a blank line with no heading of their own are in no group.
+- **Ranges.** Shift-click a second checkbox to switch every row between it and the one you clicked before.
+- **Edit values in place.** Click a value to edit it; ↩ saves, Esc cancels, and clicking away saves. A multi-line value opens in a text box (⌘↩ or Ctrl+↩ saves). The rest of the line stays as written: the `#` of a line that is off, `export`, an inline comment, and the quotes when they still fit. The checkbox and the name still switch the line.
+- **Add variables.** **+ Add** in the toolbar, or on a group's heading, opens a form for the name, the value, the group (or a new group) and whether it starts on. The value is quoted when it needs to be. If the key is already on somewhere, the new line starts off so you can swap with **Only this**.
+- **Multi-line values.** A quoted value that spans several lines, such as a PEM key, is switched as one block, so the file never ends up half commented.
+- **Alternatives.** When a key appears more than once (say, a local, a staging and a production `DATABASE_URL`), hover a row and click **Only this** to switch that one on and the others off in a single undoable step.
+- **Duplicate warning.** A key that is switched on in more than one place gets an "also on line N" badge.
+- **Sections.** Comments become headings (`# Database`, `# --- Redis ---`) or notes, and rule lines become dividers. A short comment after a blank line, right above a variable, is a heading.
+- **Filter** by key, value or comment. **Hide values** hides values while you share your screen.
+- Follows the IDE's light or dark theme.
+
+## Develop
+
+The plugin has no Rust code and no build step. It is `plugin.toml` plus a web page in `web/`:
+
+| File               | What it is                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------- |
+| `plugin.toml`      | The manifest: one `customEditors` entry with `layout = "split"` and `web = "web/index.html"` |
+| `web/envfile.js`   | Parsing and the edits: pure functions, no DOM                                               |
+| `web/app.js`       | The page: reads and edits the document through `window.openidea.document`                  |
+| `web/style.css`    | Styles, using the IDE's `--openidea-*` theme variables                                      |
+| `test/`            | Unit tests for `envfile.js` (`npm test`, Node 18 or newer)                                  |
+| `dev/harness.html` | The page next to a textarea, with a fake IDE bridge, for working on the UI in a browser     |
+
+```sh
+npm test                      # unit tests
+npm run dev                   # then open http://localhost:5178/dev/harness.html
+openidea-plugin check .       # validate the manifest the way the IDE does
+openidea-plugin link .        # load this folder into OpenIDEA without installing
+```
+
+After a change, use **Reload from disk** on the plugin in **Settings › Plugins** (or run **Reload Plugins**), then reopen the `.env` tab.
+
+`openidea-plugin` comes from an OpenIDEA release or `cargo install --locked --git https://github.com/l0ng-ai/openidea ide-host --bin openidea-plugin`.
+
+## Release
+
+The plugin is listed through the [openidea-plugins registry](https://github.com/l0ng-ai/openidea-plugins) under the publisher `devportolio`, whose signing key stays with the maintainer and never in this repository (`.gitignore` excludes `*.key`).
+
+1. Bump `version` and `change-notes` in `plugin.toml`, and run `npm test`.
+2. Pack and sign:
+   ```sh
+   openidea-plugin pack . --key ~/.config/openidea/devportolio.key --publisher devportolio \
+     --out dist/devportolio.env-toggle-<version>.oiplugin
+   shasum -a 256 dist/devportolio.env-toggle-<version>.oiplugin
+   ```
+3. Tag `v<version>`, push, and attach the `.oiplugin` to a GitHub release of that tag.
+4. In the registry, add a `[[versions]]` table to `plugins/devportolio.env-toggle.toml` with the release URL and the SHA-256, and open a pull request.
+
+## License
+
+MIT

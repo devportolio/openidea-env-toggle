@@ -1,0 +1,9 @@
+# Publisher signing keys: never commit these.
+*.key
+# Built packages (attach them to a GitHub release instead).
+dist/
+*.oiplugin
+.DS_Store
+node_modules/
+# Local editor and agent settings.
+.claude/

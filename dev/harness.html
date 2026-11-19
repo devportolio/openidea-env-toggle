@@ -1,0 +1,203 @@
+<!doctype html>
+<!--
+  Dev harness: the plugin page next to a textarea that stands in for
+  OpenIDEA's text editor, with a fake `window.openidea` bridge.
+  Serve the plugin folder (npm run dev) and open /dev/harness.html.
+  Not part of the package: only web/ is shipped.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Env Toggle harness</title>
+    <link rel="stylesheet" href="../web/style.css" />
+    <style>
+      body {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-rows: auto minmax(0, 1fr);
+      }
+      .harness-bar {
+        grid-column: 1 / -1;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 6px 10px;
+        font: 12px system-ui, sans-serif;
+        color: var(--fg);
+        background: var(--bg-elevated);
+        border-bottom: 1px solid var(--border);
+      }
+      #text {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 10px 12px;
+        border: 0;
+        border-right: 1px solid var(--border);
+        resize: none;
+        outline: none;
+        font: 13px/1.5 var(--font-mono);
+        color: var(--fg);
+        background: var(--bg);
+        white-space: pre;
+      }
+      #app {
+        min-width: 0;
+      }
+    </style>
+    <script>
+      (function () {
+        const LIGHT = {
+          "--openidea-bg": "#ffffff",
+          "--openidea-bg-elevated": "#f7f8fa",
+          "--openidea-bg-hover": "#eef0f3",
+          "--openidea-bg-input": "#ffffff",
+          "--openidea-fg": "#1e1f22",
+          "--openidea-fg-strong": "#000000",
+          "--openidea-fg-muted": "#6c707e",
+          "--openidea-border": "#dfe1e5",
+          "--openidea-focus-ring": "#3574f0",
+          "--openidea-accent": "#3574f0",
+          "--openidea-fg-on-accent": "#ffffff",
+          "--openidea-warning": "#c27d04",
+          "--openidea-danger": "#e55765",
+        };
+        const DARK = {
+          "--openidea-bg": "#1e1f22",
+          "--openidea-bg-elevated": "#2b2d30",
+          "--openidea-bg-hover": "#393b40",
+          "--openidea-bg-input": "#1e1f22",
+          "--openidea-fg": "#dfe1e5",
+          "--openidea-fg-strong": "#ffffff",
+          "--openidea-fg-muted": "#868a91",
+          "--openidea-border": "#393b40",
+          "--openidea-focus-ring": "#3574f0",
+          "--openidea-accent": "#3574f0",
+          "--openidea-fg-on-accent": "#ffffff",
+          "--openidea-warning": "#d6ae58",
+          "--openidea-danger": "#f75464",
+        };
+        const SAMPLE = [
+          "# ------------------------------",
+          "# Database",
+          "# ------------------------------",
+          "DATABASE_URL=postgres://localhost:5432/app",
+          "# DATABASE_URL=postgres://staging.internal:5432/app",
+          "# DATABASE_URL=postgres://prod.internal:5432/app",
+          "DB_POOL_SIZE=10 # per worker",
+          "",
+          "# API",
+          "API_BASE_URL=http://localhost:3000",
+          "API_TOKEN=sk_test_51Hx_example",
+          "# API_TIMEOUT_MS=30000",
+          "",
+          "# Feature flags",
+          "FEATURE_NEW_CHECKOUT=true",
+          "# FEATURE_DARK_MODE=true",
+          "export NODE_ENV=development",
+          "",
+          "# Turn this on to log every SQL query to the console.",
+          "# DEBUG_SQL=1",
+          "",
+          'JWT_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----',
+          "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE",
+          '-----END PUBLIC KEY-----"',
+          "LOG_LEVEL=",
+          "",
+        ].join("\n");
+
+        let text = SAMPLE;
+        let version = 1;
+        const listeners = [];
+        const themeListeners = [];
+        let theme = { dark: false, vars: LIGHT };
+
+        function applyTheme(t) {
+          theme = t;
+          for (const [k, v] of Object.entries(t.vars)) document.documentElement.style.setProperty(k, v);
+          document.documentElement.dataset.theme = t.dark ? "dark" : "light";
+          themeListeners.forEach((fn) => fn(t));
+        }
+
+        window.harness = {
+          get text() {
+            return text;
+          },
+          type(next) {
+            text = next;
+            version++;
+            listeners.forEach((fn) => fn({ version, text }));
+          },
+          toggleTheme() {
+            applyTheme(theme.dark ? { dark: false, vars: LIGHT } : { dark: true, vars: DARK });
+          },
+          onEdit: null,
+        };
+
+        window.openidea = {
+          postMessage() {},
+          onMessage() {},
+          get theme() {
+            return theme;
+          },
+          onThemeChange(fn) {
+            themeListeners.push(fn);
+          },
+          document: {
+            async get() {
+              return { version, text, readOnly: false, name: ".env.local" };
+            },
+            onChange(fn) {
+              listeners.push(fn);
+            },
+            async edit(v, edits) {
+              if (v !== version) throw new Error("stale");
+              let at = 0;
+              for (const e of edits) {
+                if (e.from < at || e.to < e.from || e.to > text.length) throw new Error("edits must be sorted, in range and not overlap");
+                at = e.to;
+              }
+              for (const e of [...edits].reverse()) text = text.slice(0, e.from) + e.insert + text.slice(e.to);
+              version++;
+              if (window.harness.onEdit) window.harness.onEdit(text);
+              return { version };
+            },
+            async replace(v, next) {
+              if (v !== version) throw new Error("stale");
+              text = next;
+              version++;
+              if (window.harness.onEdit) window.harness.onEdit(text);
+              return { version };
+            },
+          },
+          saveFile: async () => null,
+          openFile: async () => null,
+        };
+
+        applyTheme(theme);
+      })();
+    </script>
+  </head>
+  <body>
+    <div class="harness-bar">
+      <strong>Env Toggle harness</strong>
+      <span>left: the text editor · right: the plugin page</span>
+      <span class="spacer" style="flex: 1"></span>
+      <button id="theme" type="button">Toggle dark</button>
+    </div>
+    <textarea id="text" spellcheck="false"></textarea>
+    <div id="app"></div>
+    <script>
+      const area = document.getElementById("text");
+      area.value = harness.text;
+      area.addEventListener("input", () => harness.type(area.value));
+      harness.onEdit = (t) => {
+        area.value = t;
+      };
+      document.getElementById("theme").addEventListener("click", () => harness.toggleTheme());
+    </script>
+    <script src="../web/envfile.js"></script>
+    <script src="../web/app.js"></script>
+  </body>
+</html>
