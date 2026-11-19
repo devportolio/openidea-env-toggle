@@ -46,137 +46,38 @@
         min-width: 0;
       }
     </style>
+    <script src="./mock-bridge.js"></script>
     <script>
-      (function () {
-        const LIGHT = {
-          "--openidea-bg": "#ffffff",
-          "--openidea-bg-elevated": "#f7f8fa",
-          "--openidea-bg-hover": "#eef0f3",
-          "--openidea-bg-input": "#ffffff",
-          "--openidea-fg": "#1e1f22",
-          "--openidea-fg-strong": "#000000",
-          "--openidea-fg-muted": "#6c707e",
-          "--openidea-border": "#dfe1e5",
-          "--openidea-focus-ring": "#3574f0",
-          "--openidea-accent": "#3574f0",
-          "--openidea-fg-on-accent": "#ffffff",
-          "--openidea-warning": "#c27d04",
-          "--openidea-danger": "#e55765",
-        };
-        const DARK = {
-          "--openidea-bg": "#1e1f22",
-          "--openidea-bg-elevated": "#2b2d30",
-          "--openidea-bg-hover": "#393b40",
-          "--openidea-bg-input": "#1e1f22",
-          "--openidea-fg": "#dfe1e5",
-          "--openidea-fg-strong": "#ffffff",
-          "--openidea-fg-muted": "#868a91",
-          "--openidea-border": "#393b40",
-          "--openidea-focus-ring": "#3574f0",
-          "--openidea-accent": "#3574f0",
-          "--openidea-fg-on-accent": "#ffffff",
-          "--openidea-warning": "#d6ae58",
-          "--openidea-danger": "#f75464",
-        };
-        const SAMPLE = [
-          "# ------------------------------",
-          "# Database",
-          "# ------------------------------",
-          "DATABASE_URL=postgres://localhost:5432/app",
-          "# DATABASE_URL=postgres://staging.internal:5432/app",
-          "# DATABASE_URL=postgres://prod.internal:5432/app",
-          "DB_POOL_SIZE=10 # per worker",
-          "",
-          "# API",
-          "API_BASE_URL=http://localhost:3000",
-          "API_TOKEN=sk_test_51Hx_example",
-          "# API_TIMEOUT_MS=30000",
-          "",
-          "# Feature flags",
-          "FEATURE_NEW_CHECKOUT=true",
-          "# FEATURE_DARK_MODE=true",
-          "export NODE_ENV=development",
-          "",
-          "# Turn this on to log every SQL query to the console.",
-          "# DEBUG_SQL=1",
-          "",
-          'JWT_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----',
-          "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE",
-          '-----END PUBLIC KEY-----"',
-          "LOG_LEVEL=",
-          "",
-        ].join("\n");
-
-        let text = SAMPLE;
-        let version = 1;
-        const listeners = [];
-        const themeListeners = [];
-        let theme = { dark: false, vars: LIGHT };
-
-        function applyTheme(t) {
-          theme = t;
-          for (const [k, v] of Object.entries(t.vars)) document.documentElement.style.setProperty(k, v);
-          document.documentElement.dataset.theme = t.dark ? "dark" : "light";
-          themeListeners.forEach((fn) => fn(t));
-        }
-
-        window.harness = {
-          get text() {
-            return text;
-          },
-          type(next) {
-            text = next;
-            version++;
-            listeners.forEach((fn) => fn({ version, text }));
-          },
-          toggleTheme() {
-            applyTheme(theme.dark ? { dark: false, vars: LIGHT } : { dark: true, vars: DARK });
-          },
-          onEdit: null,
-        };
-
-        window.openidea = {
-          postMessage() {},
-          onMessage() {},
-          get theme() {
-            return theme;
-          },
-          onThemeChange(fn) {
-            themeListeners.push(fn);
-          },
-          document: {
-            async get() {
-              return { version, text, readOnly: false, name: ".env.local" };
-            },
-            onChange(fn) {
-              listeners.push(fn);
-            },
-            async edit(v, edits) {
-              if (v !== version) throw new Error("stale");
-              let at = 0;
-              for (const e of edits) {
-                if (e.from < at || e.to < e.from || e.to > text.length) throw new Error("edits must be sorted, in range and not overlap");
-                at = e.to;
-              }
-              for (const e of [...edits].reverse()) text = text.slice(0, e.from) + e.insert + text.slice(e.to);
-              version++;
-              if (window.harness.onEdit) window.harness.onEdit(text);
-              return { version };
-            },
-            async replace(v, next) {
-              if (v !== version) throw new Error("stale");
-              text = next;
-              version++;
-              if (window.harness.onEdit) window.harness.onEdit(text);
-              return { version };
-            },
-          },
-          saveFile: async () => null,
-          openFile: async () => null,
-        };
-
-        applyTheme(theme);
-      })();
+      const SAMPLE = [
+        "# ------------------------------",
+        "# Database",
+        "# ------------------------------",
+        "DATABASE_URL=postgres://localhost:5432/app",
+        "# DATABASE_URL=postgres://staging.internal:5432/app",
+        "# DATABASE_URL=postgres://prod.internal:5432/app",
+        "DB_POOL_SIZE=10 # per worker",
+        "",
+        "# API",
+        "API_BASE_URL=http://localhost:3000",
+        "API_TOKEN=sk_test_51Hx_example",
+        "# API_TIMEOUT_MS=30000",
+        "",
+        "# Feature flags",
+        "FEATURE_NEW_CHECKOUT=true",
+        "# FEATURE_DARK_MODE=true",
+        "export NODE_ENV=development",
+        "",
+        "# Turn this on to log every SQL query to the console.",
+        "# DEBUG_SQL=1",
+        "",
+        'JWT_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----',
+        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE",
+        '-----END PUBLIC KEY-----"',
+        "LOG_LEVEL=",
+        "",
+      ].join("\n");
+      window.harness = MockBridge.install({ text: SAMPLE, name: ".env.local" });
+      harness.toggleTheme = () => harness.setDark(!harness.dark);
     </script>
   </head>
   <body>

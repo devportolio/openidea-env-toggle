@@ -1,0 +1,168 @@
+<!doctype html>
+<!--
+  The README screenshot: a sample file as text (left) beside the plugin's own
+  page (right, the real web/app.js and style.css over a fake IDE bridge).
+  Render it with `npm run screenshots` (headless Chrome). ?theme=dark for dark.
+  Not part of the package: only web/ is shipped.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Env Toggle screenshot</title>
+    <link rel="stylesheet" href="../web/style.css" />
+    <style>
+      html,
+      body {
+        background: transparent;
+      }
+      body {
+        padding: 28px;
+      }
+      :root[data-theme="light"] {
+        --c-comment: #8c8c8c;
+        --c-key: #871094;
+        --c-val: #067d17;
+        --shadow: 0 12px 32px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.08);
+      }
+      :root[data-theme="dark"] {
+        --c-comment: #7a7e85;
+        --c-key: #c77dbb;
+        --c-val: #6aab73;
+        --shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.4);
+      }
+      .window {
+        display: grid;
+        grid-template-columns: minmax(0, 44fr) minmax(0, 56fr);
+        height: 100%;
+        overflow: hidden;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+      }
+      .code {
+        padding: 10px 0;
+        overflow: hidden;
+        font: 13px/20px var(--font-mono);
+        color: var(--fg);
+        border-right: 1px solid var(--border);
+      }
+      .code .ln {
+        display: flex;
+        white-space: pre;
+      }
+      .code .no {
+        flex: none;
+        width: 46px;
+        padding-right: 14px;
+        text-align: right;
+        color: var(--muted);
+        opacity: 0.7;
+      }
+      .tk-comment {
+        color: var(--c-comment);
+        font-style: italic;
+      }
+      .tk-key {
+        color: var(--c-key);
+      }
+      .tk-val {
+        color: var(--c-val);
+      }
+      #app {
+        min-width: 0;
+      }
+      /* One row shown as if hovered, to show "Only this". */
+      .row.demo-hover {
+        background: var(--bg-hover);
+      }
+      .row.demo-hover .only {
+        opacity: 1;
+      }
+    </style>
+    <script src="../web/envfile.js"></script>
+    <script src="./mock-bridge.js"></script>
+    <script>
+      const SAMPLE = [
+        "# App",
+        "APP_NAME=acme-web",
+        "NODE_ENV=development",
+        "LOG_LEVEL=debug # info in production",
+        "PORT=3000",
+        "",
+        "# Database",
+        "DATABASE_URL=postgres://localhost:5432/acme",
+        "# DATABASE_URL=postgres://staging.internal:5432/acme",
+        "# DATABASE_URL=postgres://prod.internal:5432/acme",
+        "DB_POOL_SIZE=10",
+        "",
+        "# Feature flags",
+        "FEATURE_NEW_CHECKOUT=true",
+        "# FEATURE_DARK_MODE=true",
+        "# FEATURE_BETA_SEARCH=true",
+        "",
+        "# Integrations",
+        "STRIPE_KEY=sk_test_example",
+        "# SENTRY_DSN=",
+        'JWT_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----',
+        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE",
+        '-----END PUBLIC KEY-----"',
+      ].join("\n");
+      const HOVER_LINE = 8;
+      MockBridge.install({ text: SAMPLE, name: ".env.local", dark: new URLSearchParams(location.search).get("theme") === "dark" });
+    </script>
+  </head>
+  <body>
+    <div class="window">
+      <div class="code" id="code"></div>
+      <div id="app"></div>
+    </div>
+    <script>
+      // The text side, coloured from the plugin's own parser.
+      (function () {
+        const doc = EnvToggle.parse(SAMPLE);
+        const kind = doc.lines.map(() => "plain");
+        for (const e of doc.entries) {
+          if (e.kind === "comment") kind[e.line] = "comment";
+          if (e.kind === "var") e.lines.forEach((l, k) => (kind[l] = !e.enabled ? "comment" : k === 0 ? "var" : "cont"));
+        }
+        const span = (cls, text) => {
+          const s = document.createElement("span");
+          s.className = cls;
+          s.textContent = text;
+          return s;
+        };
+        const code = document.getElementById("code");
+        doc.lines.forEach((L, i) => {
+          const ln = document.createElement("div");
+          ln.className = "ln";
+          ln.append(span("no", String(i + 1)));
+          const t = L.text;
+          const m = kind[i] === "var" && /^(\s*(?:export\s+)?)([A-Za-z_][\w.\-]*)(\s*=)(.*)$/.exec(t);
+          if (m) {
+            const hash = /\s#/.exec(m[4]);
+            const value = hash && !/^["'`]/.test(m[4]) ? m[4].slice(0, hash.index) : m[4];
+            ln.append(m[1], span("tk-key", m[2]), m[3], span("tk-val", value));
+            if (value !== m[4]) ln.append(span("tk-comment", m[4].slice(value.length)));
+          } else if (kind[i] === "cont") {
+            ln.append(span("tk-val", t));
+          } else if (kind[i] === "comment") {
+            ln.append(span("tk-comment", t));
+          } else {
+            ln.append(t);
+          }
+          code.append(ln);
+        });
+      })();
+    </script>
+    <script src="../web/app.js"></script>
+    <script>
+      setTimeout(() => {
+        const row = document.querySelector('.row[data-line="' + HOVER_LINE + '"]');
+        if (row) row.classList.add("demo-hover");
+        document.body.dataset.ready = "1";
+      }, 200);
+    </script>
+  </body>
+</html>

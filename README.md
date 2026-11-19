@@ -2,6 +2,11 @@
 
 An [OpenIDEA](https://openidea.sh) plugin that shows `.env` files as a list of checkboxes.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
+  <img alt="A .env file as text on the left, and Env Toggle on the right: one checkbox per variable, grouped under the file's comment headings (App, Database, Feature flags, Integrations), with an Only this button on a hovered row" src="docs/screenshot-light.png">
+</picture>
+
 - **Checked** = the line is active: `API_URL=http://localhost:3000`
 - **Unchecked** = the line is commented out: `# API_URL=http://localhost:3000`
 
@@ -42,6 +47,7 @@ The plugin has no Rust code and no build step. It is `plugin.toml` plus a web pa
 | `web/style.css`    | Styles, using the IDE's `--openidea-*` theme variables                                      |
 | `test/`            | Unit tests for `envfile.js` (`npm test`, Node 18 or newer)                                  |
 | `dev/harness.html` | The page next to a textarea, with a fake IDE bridge, for working on the UI in a browser     |
+| `dev/screenshot.html` | The README screenshots: a sample file beside the page (`npm run screenshots`, needs Chrome) |
 
 ```sh
 npm test                      # unit tests
