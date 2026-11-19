@@ -139,6 +139,11 @@
     ed.dataset.line = String(e.line);
     ed.setAttribute("aria-label", "Value of " + e.key);
     ed.title = editing.multiline ? "⌘↩ or Ctrl+↩ saves, Esc cancels" : "↩ saves, Esc cancels";
+    if (editing.invalid) {
+      ed.classList.add("invalid");
+      ed.setAttribute("aria-invalid", "true");
+      ed.title = E.UNWRITABLE;
+    }
     return ed;
   }
 
@@ -408,7 +413,14 @@
   function change(makeEdits, done) {
     queue = queue.then(async () => {
       if (readOnly) return;
-      const edits = makeEdits();
+      let edits;
+      try {
+        edits = makeEdits();
+      } catch (err) {
+        // Nothing is written: say why.
+        showBanner(err && err.message ? err.message : String(err));
+        return;
+      }
       if (!edits.length) return;
       try {
         const result = await bridge.document.edit(version, edits);
@@ -445,10 +457,22 @@
     render();
   }
 
-  /** Saves the draft as one undoable change (nothing when it didn't change). */
-  function commitEdit() {
+  /**
+   * Saves the draft as one undoable change (nothing when it didn't change).
+   * A value that can't be written as typed is never written: on Enter the
+   * editor stays open and says so; on leaving it, the edit is dropped and the
+   * banner says why.
+   */
+  function commitEdit(leaving) {
     if (!editing) return;
     const { line, key, draft } = editing;
+    if (!E.canWrite(draft)) {
+      showBanner(E.UNWRITABLE + (leaving ? " The edit was not saved." : ""));
+      if (leaving) editing = null;
+      else editing.invalid = true;
+      render();
+      return;
+    }
     editing = null;
     change(() => {
       const e = doc.entries.find((x) => x.kind === "var" && x.line === line);
@@ -488,15 +512,17 @@
     hint.classList.toggle("error", !!error);
   }
 
-  /** What adding this name would mean: a bad name, or a key that is already there. */
+  /** What adding this would mean: a bad name or value, or a key that is already there. */
   function updateHint() {
     const key = keyIn.value.trim();
     keyIn.classList.remove("invalid");
-    if (!key) return setHint("");
-    if (!E.isKey(key)) {
+    valIn.classList.toggle("invalid", !E.canWrite(valIn.value));
+    if (key && !E.isKey(key)) {
       keyIn.classList.add("invalid");
       return setHint("Use letters, digits, _ . and -, not starting with a digit.", true);
     }
+    if (!E.canWrite(valIn.value)) return setHint(E.UNWRITABLE, true);
+    if (!key) return setHint("");
     const same = doc.entries.filter((e) => e.kind === "var" && e.key === key);
     const onAt = same.find((e) => e.enabled);
     if (!onTouched) onBox.checked = !onAt;
@@ -530,6 +556,12 @@
       keyIn.classList.add("invalid");
       setHint(key ? "Use letters, digits, _ . and -, not starting with a digit." : "Give the variable a name.", true);
       keyIn.focus();
+      return;
+    }
+    if (!E.canWrite(valIn.value)) {
+      valIn.classList.add("invalid");
+      setHint(E.UNWRITABLE, true);
+      valIn.focus();
       return;
     }
     const choice = groupSel.value;
@@ -626,12 +658,18 @@
   // The value editor: the draft follows typing; Enter (⌘/Ctrl+Enter in a
   // multi-line box) saves, Escape cancels, leaving it saves.
   list.addEventListener("input", (ev) => {
-    if (editing && ev.target instanceof Element && ev.target.classList.contains("val-edit")) editing.draft = ev.target.value;
+    if (!editing || !(ev.target instanceof Element) || !ev.target.classList.contains("val-edit")) return;
+    editing.draft = ev.target.value;
+    if (editing.invalid) {
+      editing.invalid = false;
+      ev.target.classList.remove("invalid");
+      ev.target.removeAttribute("aria-invalid");
+    }
   });
   list.addEventListener("focusout", (ev) => {
     const t = ev.target;
     if (rendering || !(t instanceof Element) || !t.classList.contains("val-edit") || !t.isConnected) return;
-    commitEdit();
+    commitEdit(true);
   });
 
   // Up and Down move between checkboxes.
@@ -681,6 +719,7 @@
   addOk.addEventListener("click", submitAdd);
   addCancel.addEventListener("click", closeAdder);
   keyIn.addEventListener("input", updateHint);
+  valIn.addEventListener("input", updateHint);
   onBox.addEventListener("change", () => (onTouched = true));
   groupSel.addEventListener("change", () => {
     newGroupIn.hidden = groupSel.value !== NEW_GROUP;

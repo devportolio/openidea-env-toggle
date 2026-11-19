@@ -41,10 +41,25 @@
     return lines;
   }
 
-  /** Index of the closing quote `q` in `s` from `from`, skipping backslash escapes; -1 if none. */
+  /*
+   * Values are read and written the way the common readers load them: the
+   * `dotenv` package and Node's own (`util.parseEnv`, `--env-file`).
+   *
+   * - Unquoted: up to the first `#` (the rest is a comment), trimmed. A
+   *   backslash is just a backslash.
+   * - '…' and `…`: exactly what is between the quotes, line breaks included;
+   *   no escapes, so the value can't hold its own quote.
+   * - "…": the same, except that \n (and, in dotenv, \r) become line breaks.
+   *   dotenv lets \" stand inside; it keeps the backslash.
+   */
+
+  /**
+   * Index of the quote `q` that closes a value, from `from`; -1 if none.
+   * Only inside double quotes is a quote after a backslash not a closing one.
+   */
   function closing(s, from, q) {
     for (let i = from; i < s.length; i++) {
-      if (s[i] === "\\") {
+      if (s[i] === "\\" && q === '"') {
         i++;
         continue;
       }
@@ -53,10 +68,23 @@
     return -1;
   }
 
+  /** An unquoted value as readers load it: up to the first `#`, trimmed; the rest is a comment. */
+  function readBare(s) {
+    const hash = s.indexOf("#");
+    const value = (hash < 0 ? s : s.slice(0, hash)).trim();
+    return { quote: "", open: false, value, comment: hash < 0 ? "" : s.slice(hash + 1).trim(), len: value.length };
+  }
+
+  /** What readers load from between double quotes: \n and \r become line breaks. */
+  function decodeDouble(inner) {
+    return inner.replace(/\\n/g, "\n").replace(/\\r/g, "\r");
+  }
+
   /**
-   * What follows `=`: the value (unquoted), its quote, whether the quote is
-   * still open, and a trailing comment. `lead` and `len` place the value as
-   * written (quotes included) in `raw`.
+   * What follows `=`: unquoted (read like readers do), or quoted with what is
+   * between the quotes (`inner`, as written), whether the quote is still
+   * open, and a trailing comment. `lead` and `len` place the value as written
+   * (quotes included) in `raw`.
    */
   function readValue(raw) {
     const s = raw.replace(/^[ \t]+/, "");
@@ -64,26 +92,18 @@
     const q = s.charAt(0);
     if (q && QUOTES.includes(q)) {
       const end = closing(s, 1, q);
-      if (end < 0) return { value: s.slice(1), quote: q, open: true, comment: "", lead, len: s.replace(/[ \t]+$/, "").length };
+      if (end < 0) return { quote: q, open: true, inner: s.slice(1), rest: s, comment: "", lead };
       const tail = INLINE_COMMENT.exec(s.slice(end + 1));
-      return { value: s.slice(1, end), quote: q, open: false, comment: tail ? tail[1].trim() : "", lead, len: end + 1 };
+      return { quote: q, open: false, inner: s.slice(1, end), comment: tail ? tail[1].trim() : "", lead, len: end + 1 };
     }
-    // Unquoted: a # after whitespace starts a comment.
-    const hash = /[ \t]#/.exec(s);
-    const value = (hash ? s.slice(0, hash.index) : s).trim();
-    return {
-      value,
-      quote: "",
-      open: false,
-      comment: hash ? s.slice(hash.index).replace(/^[ \t]*#[ \t]?/, "").trim() : "",
-      lead,
-      len: value.length,
-    };
+    return Object.assign(readBare(s), { lead });
   }
 
   function variable(lines, i, enabled, key, exported, raw) {
     const first = readValue(raw);
     const span = [i];
+    let quote = first.quote;
+    let inner = first.inner;
     let value = first.value;
     let comment = first.comment;
     // Where the value is written in the text (quotes included), for setValue.
@@ -92,10 +112,9 @@
     if (first.open) {
       // A quoted value that goes on: the following lines up to the closing
       // quote are part of it (commented too, when the variable is off).
-      const parts = [first.value];
-      let closed = false;
+      const parts = [first.inner];
       let closedAt = -1;
-      for (let j = i + 1; j < lines.length && !closed; j++) {
+      for (let j = i + 1; j < lines.length && closedAt < 0; j++) {
         let t = lines[j].text;
         let markLen = 0;
         if (!enabled) {
@@ -105,24 +124,30 @@
           t = t.slice(markLen);
         }
         span.push(j);
-        const end = closing(t, 0, first.quote);
+        const end = closing(t, 0, quote);
         if (end >= 0) {
           parts.push(t.slice(0, end));
           const tail = INLINE_COMMENT.exec(t.slice(end + 1));
           comment = tail ? tail[1].trim() : "";
-          closed = true;
           closedAt = lines[j].start + markLen + end + 1;
         } else {
           parts.push(t);
         }
       }
-      if (closed) {
-        value = parts.join("\n");
+      if (closedAt >= 0) {
+        inner = parts.join("\n");
         valueEnd = closedAt;
       } else {
-        span.length = 1; // never closed: just this line
+        // Never closed: readers take the line as an unquoted value.
+        span.length = 1;
+        const bare = readBare(first.rest);
+        quote = "";
+        value = bare.value;
+        comment = bare.comment;
+        valueEnd = valueStart + bare.len;
       }
     }
+    if (quote) value = quote === '"' ? decodeDouble(inner) : inner;
     return {
       kind: "var",
       line: i,
@@ -130,8 +155,11 @@
       enabled,
       key,
       exported,
+      // The value as readers load it.
       value,
-      quote: first.quote,
+      quote,
+      // Line breaks written as \n inside double quotes: kept that way on edit.
+      escapes: quote === '"' && /\\[nr]/.test(inner),
       comment,
       valueStart,
       valueEnd,
@@ -303,14 +331,75 @@
     return KEY_ONLY.test(key);
   }
 
-  /** A value as it is written after `=`: bare when it can be, quoted otherwise. */
-  function formatValue(value) {
-    if (value === "") return "";
-    if (/^[^\s#"'`\\]+$/.test(value)) return value;
-    if (!/["\\]/.test(value)) return '"' + value + '"';
-    if (!/['\r\n]/.test(value) && !value.endsWith("\\")) return "'" + value + "'";
-    return '"' + value.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+  // Ways to write a value so readers load exactly it; each returns null when it can't.
+  // No way escapes anything: readers don't undo escapes (but \n in "…").
+
+  /** Unquoted: no #, line break or space at either end, not starting with a quote. `spaces`: allow spaces inside. */
+  function asBare(v, spaces) {
+    if (v === "") return "";
+    if (/[#\r\n]/.test(v) || /^\s|\s$/.test(v) || QUOTES.includes(v[0])) return null;
+    if (!spaces && /\s/.test(v)) return null;
+    return v;
   }
+
+  /** '…': anything but a single quote. */
+  function asSingle(v) {
+    return /['\r]/.test(v) ? null : "'" + v + "'";
+  }
+
+  /** `…`: anything but a backtick. Last resort: not every reader knows backticks. */
+  function asBacktick(v) {
+    return /[`\r]/.test(v) ? null : "`" + v + "`";
+  }
+
+  /**
+   * "…": no double quote and no backslash (readers turn \n into a line break).
+   * Line breaks are written as \n when `escapes`, as they are otherwise.
+   */
+  function asDouble(v, escapes) {
+    if (/["\\\r]/.test(v)) return null;
+    return '"' + (escapes ? v.replace(/\n/g, "\\n") : v) + '"';
+  }
+
+  /**
+   * `value` as written after `=`, so that readers load exactly it; null when
+   * no way of writing it does (it needs quotes and holds ', " and `, or a
+   * carriage return). With `was` (an entry), its way of writing comes first.
+   */
+  function encodeValue(value, was) {
+    const v = String(value);
+    // Node reads `export K=` as a key named "export K"; `export K=""` it reads right.
+    if (v === "" && was && was.exported) return '""';
+    const ways = [];
+    const double = (x) => asDouble(x, false);
+    if (was && was.quote) {
+      // A quoted value stays quoted while some quotes hold it.
+      if (was.quote === '"') ways.push((x) => asDouble(x, was.escapes));
+      else if (was.quote === "'") ways.push(asSingle);
+      else ways.push(asBacktick);
+      ways.push(double, asSingle, (x) => asBare(x, true), asBacktick);
+    } else {
+      // Quotes for anything with spaces, so the file also reads well in a shell.
+      ways.push((x) => asBare(x, false), asSingle, double, (x) => asBare(x, true), asBacktick);
+    }
+    for (const way of ways) {
+      const written = way(v);
+      if (written !== null) return written;
+    }
+    return null;
+  }
+
+  /** The value as it would be written for a new variable; null when it can't be written. */
+  function formatValue(value) {
+    return encodeValue(value);
+  }
+
+  /** Whether `value` can be written so readers load it unchanged. */
+  function canWrite(value) {
+    return encodeValue(value) !== null;
+  }
+
+  const UNWRITABLE = "This value can't be written so .env readers load it unchanged: it needs quotes but holds ', \" and `.";
 
   /**
    * The edit that adds `key=value` (commented out unless `on`): at the end of
@@ -327,11 +416,13 @@
     const section = opts.section == null ? null : opts.section;
     const newSection = (opts.newSection || "").trim().replace(/[.!?:,;]+$/, "");
     if (!isKey(key)) throw new Error("not a valid variable name: " + key);
+    const written = encodeValue(value);
+    if (written === null) throw new Error(UNWRITABLE);
 
     const text = doc.text;
     const eol = /\r\n/.test(text) ? "\r\n" : "\n";
     const mark = on ? "" : "# ";
-    const body = mark + key + "=" + formatValue(value).split(/\r\n|\n|\r/).join(eol + mark);
+    const body = mark + key + "=" + written.split(/\r\n|\n|\r/).join(eol + mark);
 
     let at;
     let before = "";
@@ -366,24 +457,21 @@
     return { edits: [{ from: at, to: at, insert }], line: splitLines(changed.slice(0, start)).length - 1 };
   }
 
-  /** `value` in the quotes `q`, when they hold it as it is; null when not. */
-  function withQuote(value, q) {
-    if (value.includes(q) || value.includes("\\")) return null;
-    return q + value + q;
-  }
-
   /**
-   * The edit that changes the value of the variable starting on `line`. The
-   * rest of the line stays as written: indent, `#`, `export`, key, spacing and
-   * a trailing comment; the value keeps its quotes when they still fit.
+   * The edit that changes the value (as readers load it) of the variable
+   * starting on `line`. The rest of the line stays as written: indent, `#`,
+   * `export`, key, spacing and a trailing comment; the value keeps its way of
+   * writing (quotes, \n escapes) when it still holds it. Throws when the
+   * value can't be written (see canWrite).
    */
   function setValue(doc, line, value) {
     const e = entryAt(doc, line);
     if (!e || e.kind !== "var") return [];
     const v = String(value);
     if (v === e.value) return [];
+    const written = encodeValue(v, e);
+    if (written === null) throw new Error(UNWRITABLE);
     const eol = /\r\n/.test(doc.text) ? "\r\n" : "\n";
-    const written = (e.quote && withQuote(v, e.quote)) || formatValue(v);
     // The lines of a multi-line value are commented too while it's off.
     const insert = written.split(/\r\n|\n|\r/).join(eol + (e.enabled ? "" : "# "));
     return [{ from: e.valueStart, to: e.valueEnd, insert }];
@@ -398,5 +486,5 @@
     return out;
   }
 
-  return { parse, toggle, onlyThis, setMany, sections, addVariable, setValue, formatValue, isKey, applyEdits, commentLabel };
+  return { parse, toggle, onlyThis, setMany, sections, addVariable, setValue, formatValue, canWrite, UNWRITABLE, isKey, applyEdits, commentLabel };
 });

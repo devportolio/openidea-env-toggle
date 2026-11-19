@@ -1,11 +1,11 @@
 id = "devportolio.env-toggle"
 name = "Env Toggle"
-version = "1.0.1"
+version = "1.0.2"
 description = "Turn .env variables on and off with checkboxes: checked lines are active, unchecked lines are commented out. Switch whole groups at once and add variables from the view. Opens beside the text like the Markdown preview, or on its own."
 authors = ["Env Toggle contributors"]
 license = "MIT"
 homepage = "https://github.com/devportolio/openidea-env-toggle"
-change-notes = "1.0.1 — checkboxes, fields and scrollbars follow the IDE's dark theme (unchecked boxes were white). 1.0.0 — first public release. 0.3.0 — click a value to edit it in place (multi-line values in a text box); the rest of the line stays as written. 0.2.1 — a blank line now ends a group, and a bar in the margin shows each group's extent. 0.2.0 — group checkboxes on section headings, shift-click to switch a range, and + Add to add a variable to a group or a new group. 0.1.0 — first release: a checkbox view of .env files beside the text editor, multi-line values, duplicate-key hints, \"Only this\" for switching between alternatives, filter and hidden values."
+change-notes = "1.0.2 — values are read and written the way dotenv and Node load them: no escaping that readers keep (quotes and backslashes are written as they are), \\n escapes kept on edit, any # ends an unquoted value, and a value no quoting can hold is refused with a message instead of being changed. 1.0.1 — checkboxes, fields and scrollbars follow the IDE's dark theme (unchecked boxes were white). 1.0.0 — first public release. 0.3.0 — click a value to edit it in place (multi-line values in a text box); the rest of the line stays as written. 0.2.1 — a blank line now ends a group, and a bar in the margin shows each group's extent. 0.2.0 — group checkboxes on section headings, shift-click to switch a range, and + Add to add a variable to a group or a new group. 0.1.0 — first release: a checkbox view of .env files beside the text editor, multi-line values, duplicate-key hints, \"Only this\" for switching between alternatives, filter and hidden values."
 categories = ["tools"]
 icon = "icon.svg"
 icon-dark = "icon_dark.svg"

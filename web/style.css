@@ -632,3 +632,8 @@ label.heading:hover {
   text-align: center;
   color: var(--muted);
 }
+
+.row .val-edit.invalid {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 1px var(--danger);
+}

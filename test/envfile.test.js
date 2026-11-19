@@ -48,10 +48,10 @@ test("keeps CRLF line breaks", () => {
   assert.equal(flip("A=1\r\nB=2\r\n", 1, false), "A=1\r\n# B=2\r\n");
 });
 
-test("unquoted values: # after a space starts a comment", () => {
-  const [a, b] = vars("A=abc # the comment\nB=abc#not-a-comment");
+test("unquoted values: any # starts a comment, as dotenv and Node read them", () => {
+  const [a, b] = vars("A=abc # the comment\nB=abc#also-a-comment");
   assert.deepEqual([a.value, a.comment], ["abc", "the comment"]);
-  assert.deepEqual([b.value, b.comment], ["abc#not-a-comment", ""]);
+  assert.deepEqual([b.value, b.comment], ["abc", "also-a-comment"]);
 });
 
 test("multi-line quoted values switch as one block", () => {
@@ -69,9 +69,9 @@ test("multi-line quoted values switch as one block", () => {
   assert.equal(flip(off, 0, true), text);
 });
 
-test("an unclosed quote is a single line", () => {
+test("an unclosed quote is a single unquoted line, as readers take it", () => {
   const [a, b] = vars('A="oops\nB=2');
-  assert.deepEqual([a.lines, a.value, b.key], [[0], "oops", "B"]);
+  assert.deepEqual([a.lines, a.value, a.quote, b.key], [[0], '"oops', "", "B"]);
 });
 
 test("escaped quotes do not close a value", () => {
@@ -231,14 +231,14 @@ test("add: keeps CRLF and rejects bad names", () => {
 test("formatValue: quotes only when needed, and reads back the same", () => {
   assert.equal(formatValue(""), "");
   assert.equal(formatValue("postgres://u:p@h:5432/db?ssl=true"), "postgres://u:p@h:5432/db?ssl=true");
-  assert.equal(formatValue("two words"), '"two words"');
-  assert.equal(formatValue("a #b"), '"a #b"');
+  assert.equal(formatValue("two words"), "'two words'");
+  assert.equal(formatValue("a #b"), "'a #b'");
   assert.equal(formatValue('say "hi"'), "'say \"hi\"'");
   for (const v of ["two words", "a #b", 'say "hi"', "it's", "C:\\path\\x", "multi\nline"]) {
     const [text] = add("", { key: "K", value: v });
     const read = vars(text)[0];
     assert.equal(read.key, "K", v);
-    if (!/\\/.test(v)) assert.equal(read.value, v, v);
+    assert.equal(read.value, v, v);
   }
 });
 
@@ -255,7 +255,7 @@ test("setValue: replaces only the value", () => {
   assert.equal(edit("A=1\nB=2", 1, "3"), "A=1\nB=3");
   assert.equal(edit("export A = 1", 0, "2"), "export A = 2");
   assert.equal(edit("  # A=1", 0, "2"), "  # A=2", "a line that is off stays off");
-  assert.equal(edit("A=1 # the note", 0, "two words"), 'A="two words" # the note');
+  assert.equal(edit("A=1 # the note", 0, "two words"), "A='two words' # the note");
   assert.equal(edit("A=", 0, "x"), "A=x");
   assert.equal(edit("A=x", 0, ""), "A=");
 });
@@ -271,10 +271,10 @@ test("setValue: keeps the quotes when they still fit", () => {
 test("setValue: multi-line values, on and off", () => {
   const on = 'K="l1\nl2"\nB=2';
   assert.equal(edit(on, 0, "short"), 'K="short"\nB=2');
-  assert.equal(edit("K=x\nB=2", 0, "a\nb"), 'K="a\nb"\nB=2');
+  assert.equal(edit("K=x\nB=2", 0, "a\nb"), "K='a\nb'\nB=2");
   const off = '# K="l1\n# l2" # note\nB=2';
   assert.equal(edit(off, 0, "a\nb\nc"), '# K="a\n# b\n# c" # note\nB=2');
-  assert.equal(edit("# K=x\r\nB=2", 0, "a\nb"), '# K="a\r\n# b"\r\nB=2');
+  assert.equal(edit("# K=x\r\nB=2", 0, "a\nb"), "# K='a\r\n# b'\r\nB=2");
   // What was written reads back the same.
   const [k] = vars(edit(off, 0, "a\nb\nc"));
   assert.deepEqual([k.enabled, k.value, k.comment, k.lines], [false, "a\nb\nc", "note", [0, 1, 2]]);

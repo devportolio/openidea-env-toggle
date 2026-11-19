@@ -1,12 +1,16 @@
 {
   "name": "env-toggle",
   "private": true,
-  "description": "OpenIDEA plugin: checkbox view for .env files. No dependencies; this file only holds the scripts.",
+  "description": "OpenIDEA plugin: checkbox view for .env files. No runtime dependencies; the dev dependencies are for the tests.",
   "scripts": {
     "test": "node --test",
     "dev": "python3 -m http.server 5178",
     "check": "openidea-plugin check .",
-    "pack": "openidea-plugin pack . --out dist/devportolio.env-toggle-1.0.1.oiplugin",
+    "pack": "openidea-plugin pack . --out dist/devportolio.env-toggle-1.0.2.oiplugin",
     "screenshots": "for t in light dark; do \"${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}\" --headless=new --hide-scrollbars --force-device-scale-factor=2 --window-size=1360,640 --default-background-color=00000000 --virtual-time-budget=3000 --screenshot=docs/screenshot-$t.png \"file://$PWD/dev/screenshot.html?theme=$t\"; done"
+  },
+  "devDependencies": {
+    "dotenv": "17.2.3",
+    "jsdom": "31.0.1"
   }
 }
